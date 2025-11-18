@@ -1,0 +1,18 @@
+{
+  "generated_at": "2025-11-18T18:54:01",
+  "metadata": {
+    "n_samples": 10000,
+    "train_samples": 8000,
+    "test_samples": 2000,
+    "use_tensorflow": true
+  },
+  "descriptive_stats_csv": "output\\descriptive_stats.csv",
+  "correlation_csv": "output\\correlation_matrix.csv",
+  "plots_dir": "output\\plots",
+  "models_dir": "output\\models",
+  "metrics": {
+    "MSE": 5.432562095456507,
+    "MAE": 1.8574221157497537,
+    "R2": 0.9948624364488503
+  }
+}

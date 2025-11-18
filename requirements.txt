@@ -1,0 +1,7 @@
+numpy
+pandas
+matplotlib
+scikit-learn
+joblib
+seaborn    # opcional, só para o heatmap (se não quiser, pode remover)
+tensorflow # opcional — se instalado, o script usará Keras/TensorFlow; caso contrário usa scikit-learn

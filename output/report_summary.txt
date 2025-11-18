@@ -1,0 +1,8 @@
+Relatório gerado em 2025-11-18T18:54:01
+
+Métricas (conjunto de teste):
+ - MSE: 5.4326
+ - MAE: 1.8574
+ - R2:  0.9949
+
+Veja os arquivos em output/ e as figuras em output/plots/
