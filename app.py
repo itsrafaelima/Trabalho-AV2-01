@@ -130,8 +130,8 @@ def do_eda(df):
 # -----------------------
 def preprocess(df, test_size=0.2, random_state=42):
     """Aplica StandardScaler em X e y, divide em treino/teste (80/20) e retorna arrays + scalers."""
-    X = df[['x1', 'x2', 'x3']].values.astype(float)
-    y = df['y'].values.astype(float).reshape(-1, 1)
+    X = df[['x1','x2','x3']].values.astype(float)
+    y = df['y'].values.astype(float).reshape(-1,1)
     scaler_X = StandardScaler()
     scaler_y = StandardScaler()
     X_scaled = scaler_X.fit_transform(X)
