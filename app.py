@@ -2,18 +2,18 @@
 # -*- coding: utf-8 -*-
 """
 app.py
-Implementa pipeline completo para estimativa de consumo energético:
+Implementa um pipeline completo para estimar consumo energético:
 - EDA (estatísticas, histogramas, dispersões, correlações)
 - Pré-processamento (StandardScaler)
-- Construção e treino de MLP (3 -> 10 -> 1) com Keras (fallback sklearn)
-- Early stopping (validação 10% do treino), até 300 épocas
+- Construção e treino de uma MLP (3 -> 10 -> 1) com Keras (fallback para sklearn)
+- Early stopping (usa 10% do treino para validação), até 300 épocas
 - Avaliação: MSE, MAE, R2
-- Geração de gráficos e salvamento de artefatos
+- Geração de gráficos e salvamento de arquivos
 Uso:
     python app.py --data caminho/consumo_energia_full.csv
 Ou apenas:
     python app.py
-que tentará carregar arquivos padrão em ./data/
+que vai tentar carregar arquivos padrão em ./data/
 """
 import os
 import argparse
@@ -24,12 +24,12 @@ import matplotlib.pyplot as plt
 import json
 import datetime
 
-# ML libs
+# Bibliotecas de ML
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-# Try tensorflow.keras, fallback to sklearn's MLPRegressor if not available
+# Tenta usar tensorflow.keras; se não existir, usa MLPRegressor do sklearn
 USE_TF = True
 try:
     import tensorflow as tf
@@ -41,7 +41,7 @@ except Exception as e:
     from sklearn.neural_network import MLPRegressor
 
 # -----------------------
-# Utility / I/O
+# Utilidades / I/O
 # -----------------------
 OUTDIR = Path("output")
 PLOTS_DIR = OUTDIR / "plots"
@@ -51,7 +51,7 @@ PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 def auto_load_csv(path_candidates):
-    """Tenta carregar o primeiro CSV existente na lista."""
+    """Tenta carregar o primeiro CSV existente na lista de caminhos."""
     for p in path_candidates:
         if os.path.exists(p):
             print(f"[i] Carregando: {p}")
@@ -59,7 +59,7 @@ def auto_load_csv(path_candidates):
     raise FileNotFoundError(f"Nenhum dos arquivos foi encontrado: {path_candidates}")
 
 def detect_and_rename(df):
-    """Detecta colunas x1,x2,x3,y por nomes comuns em pt/en e renomeia."""
+    """Detecta colunas x1, x2, x3, y usando nomes comuns em pt/en e renomeia."""
     cols = {c.lower(): c for c in df.columns}
     mapping = {}
     possibles = {
@@ -73,7 +73,8 @@ def detect_and_rename(df):
             if o in cols:
                 mapping[cols[o]] = key
                 break
-    # if nothing matched and df has 4 columns, assume order
+
+    # Se nada foi detectado e o dataset tem 4 colunas, assume ordem x1,x2,x3,y
     if len(mapping) < 4 and df.shape[1] == 4:
         mapping = {df.columns[0]:'x1', df.columns[1]:'x2', df.columns[2]:'x3', df.columns[3]:'y'}
     df2 = df.rename(columns=mapping)
@@ -86,10 +87,11 @@ def detect_and_rename(df):
 # EDA
 # -----------------------
 def do_eda(df):
-    """Gera estatísticas e gráficos (salva em output). Retorna descritores e correlação."""
+    """Gera estatísticas e gráficos, salvando tudo em output/. Retorna estatísticas e correlação."""
     desc = df.describe().T
     desc.to_csv(OUTDIR / "descriptive_stats.csv")
-    # histograms
+
+    # Histogramas
     for col in df.columns:
         plt.figure()
         plt.hist(df[col].values, bins=30)
@@ -97,7 +99,8 @@ def do_eda(df):
         plt.xlabel(col); plt.ylabel("Frequência")
         plt.savefig(PLOTS_DIR / f"hist_{col}.png", bbox_inches='tight')
         plt.close()
-    # scatter x vs y
+
+    # Dispersões x vs y
     for col in ['x1','x2','x3']:
         plt.figure()
         plt.scatter(df[col].values, df['y'].values, s=10, alpha=0.6)
@@ -105,10 +108,12 @@ def do_eda(df):
         plt.xlabel(col); plt.ylabel("y (consumo kWh)")
         plt.savefig(PLOTS_DIR / f"scatter_{col}_y.png", bbox_inches='tight')
         plt.close()
-    # correlation
+
+    # Matriz de correlação
     corr = df.corr()
     corr.to_csv(OUTDIR / "correlation_matrix.csv")
-    # save a small png with correlation heatmap
+
+    # Heatmap (se seaborn estiver instalado)
     try:
         import seaborn as sns
         plt.figure(figsize=(6,5))
@@ -117,15 +122,14 @@ def do_eda(df):
         plt.savefig(PLOTS_DIR / "correlation_matrix.png", bbox_inches='tight')
         plt.close()
     except Exception:
-        # fallback: text csv is fine
         pass
     return desc, corr
 
 # -----------------------
-# Preprocessing
+# Pré-processamento
 # -----------------------
 def preprocess(df, test_size=0.2, random_state=42):
-    """Aplica StandardScaler (X e y), faz split 80/20 e retorna scalers e arrays."""
+    """Aplica StandardScaler em X e y, divide em treino/teste (80/20) e retorna arrays + scalers."""
     X = df[['x1','x2','x3']].values.astype(float)
     y = df['y'].values.astype(float).reshape(-1,1)
     scaler_X = StandardScaler()
@@ -136,7 +140,7 @@ def preprocess(df, test_size=0.2, random_state=42):
     return X_train, X_test, y_train, y_test, scaler_X, scaler_y
 
 # -----------------------
-# Model building (Keras)
+# Construção do modelo (Keras)
 # -----------------------
 def build_keras_model(input_dim=3, hidden_neurons=10, activation='relu'):
     model = Sequential([
@@ -147,7 +151,7 @@ def build_keras_model(input_dim=3, hidden_neurons=10, activation='relu'):
     return model
 
 # -----------------------
-# Train & evaluate
+# Treino e avaliação
 # -----------------------
 def train_and_evaluate_keras(X_train, y_train, X_test, y_test, scaler_y, epochs=300, batch_size=32):
     tf.random.set_seed(42)
@@ -156,14 +160,17 @@ def train_and_evaluate_keras(X_train, y_train, X_test, y_test, scaler_y, epochs=
     ckpt = ModelCheckpoint(str(MODELS_DIR / "best_model.h5"), monitor='val_loss', save_best_only=True, verbose=0)
     history = model.fit(X_train, y_train, validation_split=0.1, epochs=epochs,
                         batch_size=batch_size, callbacks=[es, ckpt], verbose=2)
-    # Predictions (inverse transform)
+
+    # Previsões (desfazendo padronização)
     y_pred_scaled = model.predict(X_test).ravel()
     y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1,1)).ravel()
     y_true = scaler_y.inverse_transform(y_test.reshape(-1,1)).ravel()
     metrics = compute_metrics(y_true, y_pred)
-    # save model
+
+    # Salva modelo final
     model.save(MODELS_DIR / "final_model.h5")
-    # save history plot
+
+    # Gráfico da loss
     plt.figure()
     plt.plot(history.history['loss'], label='train')
     plt.plot(history.history['val_loss'], label='val')
@@ -181,10 +188,12 @@ def train_and_evaluate_sklearn(X_train, y_train, X_test, y_test, scaler_y, max_i
     y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1,1)).ravel()
     y_true = scaler_y.inverse_transform(y_test.reshape(-1,1)).ravel()
     metrics = compute_metrics(y_true, y_pred)
-    # save model with joblib
+
+    # Salva modelo
     import joblib
     joblib.dump(mlp, MODELS_DIR / "mlp_model.joblib")
-    # save loss curve if available
+
+    # Gráfico da curva de loss (se existir)
     if hasattr(mlp, "loss_curve_"):
         plt.figure()
         plt.plot(mlp.loss_curve_)
@@ -200,10 +209,10 @@ def compute_metrics(y_true, y_pred):
     return {"MSE": float(mse), "MAE": float(mae), "R2": float(r2)}
 
 # -----------------------
-# Plots and save results
+# Gráficos e salvamento de resultados
 # -----------------------
 def save_common_plots(y_true, y_pred):
-    # y_true vs y_pred
+    # Gráfico y_true vs y_pred
     plt.figure()
     plt.scatter(y_true, y_pred, s=10, alpha=0.6)
     mn = min(y_true.min(), y_pred.min())
@@ -211,13 +220,15 @@ def save_common_plots(y_true, y_pred):
     plt.plot([mn,mx],[mn,mx], linestyle='--', color='k')
     plt.xlabel("y_real"); plt.ylabel("y_previsto"); plt.title("y_real vs y_previsto")
     plt.savefig(PLOTS_DIR / "y_true_vs_y_pred.png", bbox_inches='tight'); plt.close()
-    # residuals
+
+    # Histograma dos resíduos
     residuals = y_pred - y_true
     plt.figure()
     plt.hist(residuals, bins=30)
     plt.title("Distribuição dos resíduos (y_pred - y_true)"); plt.xlabel("Resíduo"); plt.ylabel("Frequência")
     plt.savefig(PLOTS_DIR / "residuals_hist.png", bbox_inches='tight'); plt.close()
-    # save predictions
+
+    # Salva valores
     preds_df = pd.DataFrame({"y_true": y_true, "y_pred": y_pred, "residual": residuals})
     preds_df.to_csv(OUTDIR / "predictions.csv", index=False)
     return preds_df
@@ -235,7 +246,8 @@ def save_report(metadata, desc, corr, metrics):
     }
     with open(OUTDIR / "report_summary.json", "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
-    # also brief textual report
+
+    # Relatório texto
     txt = (f"Relatório gerado em {now}\n\n"
            f"Métricas (conjunto de teste):\n"
            f" - MSE: {metrics['MSE']:.4f}\n"
@@ -246,14 +258,15 @@ def save_report(metadata, desc, corr, metrics):
         f.write(txt)
 
 # -----------------------
-# Main
+# Função principal
 # -----------------------
 def main(args):
-    # candidates for input files
+    # Caminhos possíveis para os arquivos de entrada
     candidates = []
     if args.data:
         candidates.append(args.data)
-    # common default paths
+
+    # Caminhos padrão comuns
     candidates += [
         "./consumo_energia_full.csv",
         "./consumo_energia_train.csv",
@@ -267,11 +280,13 @@ def main(args):
     print("[i] Dimensões do dataset:", df.shape)
     # EDA
     desc, corr = do_eda(df)
-    # preprocessing
+
+    # Pré-processamento
     X_train, X_test, y_train, y_test, scaler_X, scaler_y = preprocess(df, test_size=0.2, random_state=42)
     metadata = {"n_samples": int(df.shape[0]), "train_samples": int(X_train.shape[0]), "test_samples": int(X_test.shape[0]),
                 "use_tensorflow": USE_TF}
-    # train & evaluate
+
+    # Treino
     if USE_TF:
         print("[i] TensorFlow detectado: treinando com Keras.")
         metrics, y_true, y_pred, _history = train_and_evaluate_keras(X_train, y_train, X_test, y_test, scaler_y,
@@ -279,17 +294,22 @@ def main(args):
     else:
         print("[i] TensorFlow não disponível: usando sklearn MLPRegressor.")
         metrics, y_true, y_pred, _model = train_and_evaluate_sklearn(X_train, y_train, X_test, y_test, scaler_y, max_iter=300)
-    # common plots
+
+    # Gráficos comuns
     preds_df = save_common_plots(y_true, y_pred)
-    # save scalers
+
+    # Salvar scalers
     import joblib
     joblib.dump(scaler_X, MODELS_DIR / "scaler_X.joblib")
     joblib.dump(scaler_y, MODELS_DIR / "scaler_y.joblib")
-    # save EDA outputs were already saved in do_eda()
+
+    # Salvar relatório
     save_report(metadata, desc, corr, metrics)
-    # metrics CSV
-    pd.DataFrame(list(metrics.items()), columns=["metric","value"]).to_csv(OUTDIR / "metrics.csv", index=False)
-    print("[i] Done. Outputs em:", OUTDIR.resolve())
+
+    # CSV com as métricas
+    pd.DataFrame(list(metrics.items()), columns=["metric", "value"]).to_csv(OUTDIR / "metrics.csv", index=False)
+
+    print("[i] Pronto. Resultados em:", OUTDIR.resolve())
     print(" - plots:", PLOTS_DIR.resolve())
     print(" - modelos:", MODELS_DIR.resolve())
     print(" - resumo:", OUTDIR / "report_summary.txt")
